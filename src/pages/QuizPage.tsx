@@ -1,7 +1,8 @@
-// src/pages/QuizPage.tsx ─＋「気になる」チェックを追加＋getFlaggedWords対応
+// src/pages/QuizPage.tsx ─＋ダミー補填＆ランダム化
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useMemo, useEffect } from 'react'
 import type { Word } from '../utils/csvLoader'
+import { loadWords } from '../utils/csvLoader'     // ← 全単語読み込み用
 import { removeReview } from '../utils/db'
 import { addFlag, removeFlag, getFlaggedWords } from '../utils/db'
 
@@ -18,55 +19,65 @@ export default function QuizPage() {
   const { state } = useLocation() as { state: LocState }
   const navigate = useNavigate()
 
-  const [idx, setIdx]           = useState(0)
-  const [score, setScore]       = useState(0)
-  const [wrong, setWrong]       = useState<Word[]>([])
-  const [chosenId, setChosenId] = useState<string | null>(null)
-  const [text, setText]         = useState('')
+  const [idx, setIdx]             = useState(0)
+  const [score, setScore]         = useState(0)
+  const [wrong, setWrong]         = useState<Word[]>([])
+  const [chosenId, setChosenId]   = useState<string|null>(null)
+  const [text, setText]           = useState('')
   const [flaggedIds, setFlaggedIds] = useState<string[]>([])
   const [isFlagged, setIsFlagged]   = useState(false)
+  const [allWords, setAllWords]     = useState<Word[]>([])  // 全単語プール
 
   const cur = state.qs[idx]
 
-  // ◇ 現在の「気になる」状態をロード
+  // ─── presetType があるときだけ全単語を読み込む ───
   useEffect(() => {
-    getFlaggedWords().then(words => {
-      const ids = words.map(w => w.id)
+    if (state.presetType) {
+      loadWords().then(setAllWords).catch(console.error)
+    }
+  }, [state.presetType])
+
+  // ─── 「気になる」IDリストを読み込む ───
+  useEffect(() => {
+    getFlaggedWords().then(ws => {
+      const ids = ws.map(w => w.id)
       setFlaggedIds(ids)
       setIsFlagged(ids.includes(cur.id))
     })
   }, [cur.id])
 
-  // ◇ トグルで「気になる」を追加／削除
+  // ─── トグルで気になるOn/Off ───
   const toggleFlag = () => {
     if (isFlagged) {
       removeFlag(cur.id)
       setIsFlagged(false)
     } else {
-      addFlag(cur)      // Word 全体を渡す
+      addFlag(cur)  // Word 全体を渡す
       setIsFlagged(true)
     }
   }
 
-  // ◇ 4択の選択肢（正解＋ダミー3つ）をシャッフル
+  // ─── ４択の選択肢をプールからランダム３件＋正解で作成 ───
   const choices = useMemo(() => {
-    const dummies = state.qs.filter(w => w.id !== cur.id).slice(0, 3)
-    return shuffle([cur, ...dummies])
-  }, [cur, state.qs])
+    // プールは「presetType 時は allWords が読み込まれたら、それ以外は state.qs」
+    const pool = state.presetType && allWords.length > 0 ? allWords : state.qs
+    // 正解以外の候補をランダムに並べ替えて先頭3件
+    const others = shuffle(pool.filter(w => w.id !== cur.id)).slice(0, 3)
+    // 正解＋ダミー３件をさらにシャッフル
+    return shuffle([cur, ...others])
+  }, [cur, state.qs, state.presetType, allWords])
 
-  // ◇ 「復習モード」で来て、かつ正解なら復習リストから削除
+  // ─── 復習モードなら１回正解で削除 ───
   const maybeRemove = (isCorrect: boolean) => {
     if (state.presetType === 'review' && isCorrect) {
       removeReview(cur.id)
     }
   }
 
-  // ◇ 次へ or 結果へ
+  // ─── 次へ or 結果ページへ ───
   const next = (isCorrect: boolean) => {
     maybeRemove(isCorrect)
-    if (!isCorrect) {
-      setWrong(ws => [...ws, cur])
-    }
+    if (!isCorrect) setWrong(ws => [...ws, cur])
     setScore(s => s + (isCorrect ? 1 : 0))
 
     setTimeout(() => {
@@ -86,7 +97,7 @@ export default function QuizPage() {
     }, DELAY_MS)
   }
 
-  // ◇ ユーザーアクション
+  // ─── UIアクション ───
   const choose = (w: Word) => {
     if (!chosenId) {
       setChosenId(w.id)
@@ -102,7 +113,7 @@ export default function QuizPage() {
   const isJE_MCQ = state.mode === 'JE_MCQ'
   const isJE_IN  = state.mode === 'JE_INPUT'
 
-  // ◇ 英語→日本語モードで自動発音
+  // ─── 自動発音 ───
   useEffect(() => {
     if (isEJ) {
       const u = new SpeechSynthesisUtterance(cur.english)
@@ -119,12 +130,11 @@ export default function QuizPage() {
         {idx + 1}/{state.qs.length}
       </p>
 
-      {/* 質問文＋発音＋気になるチェック */}
+      {/* 質問文＋発音＋気になる */}
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold flex-1">
           {isEJ ? cur.english : cur.japanese}
         </h2>
-        {/* 発音ボタン */}
         {isEJ && (
           <button
             type="button"
@@ -136,18 +146,13 @@ export default function QuizPage() {
             }}
             className="p-1 rounded-full hover:bg-gray-100"
             aria-label="発音を聞く"
-          >
-            🔊
-          </button>
+          >🔊</button>
         )}
-        {/* 気になるチェック */}
         <button
           onClick={toggleFlag}
           aria-label="気になる切替"
           className="text-2xl ml-2"
-        >
-          {isFlagged ? '★' : '☆'}
-        </button>
+        >{isFlagged ? '★' : '☆'}</button>
       </div>
 
       {/* 4択 (EJ / JE_MCQ) */}
@@ -169,9 +174,7 @@ export default function QuizPage() {
                 className={cls}
                 onClick={() => choose(c)}
                 disabled={!!chosenId}
-              >
-                {label}
-              </button>
+              >{label}</button>
             )
           })}
         </div>
@@ -191,16 +194,14 @@ export default function QuizPage() {
             type="submit"
             disabled={!text.trim()}
             className="w-full py-2 bg-blue-600 text-white rounded disabled:bg-gray-300 hover:bg-blue-700"
-          >
-            チェック
-          </button>
+          >チェック</button>
         </form>
       )}
     </div>
   )
 }
 
-/* ── util ── */
+// ── util ──
 function shuffle<T>(arr: T[]): T[] {
   return [...arr].sort(() => Math.random() - 0.5)
 }
