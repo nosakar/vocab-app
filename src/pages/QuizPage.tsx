@@ -16,6 +16,18 @@ type LocState = {
   presetType?: 'review' | 'flagged'
 }
 
+// ─── 共通の speak 関数 ──────────────────────
+function speak(text: string) {
+  if (!('speechSynthesis' in window)) return
+  const u = new SpeechSynthesisUtterance(text)
+  u.lang = 'en-US'
+  // 利用可能な voice があればセット
+  const voice = speechSynthesis.getVoices().find(v => v.lang.startsWith('en'))
+  if (voice) u.voice = voice
+  speechSynthesis.cancel()
+  speechSynthesis.speak(u)
+}
+
 export default function QuizPage() {
   const { state } = useLocation() as { state: LocState }
   const navigate = useNavigate()
@@ -32,12 +44,14 @@ export default function QuizPage() {
   const cur = state.qs[idx]
   const progress = ((idx + 1) / state.qs.length) * 100
 
+  // presetType 時は全単語プールをロード
   useEffect(() => {
     if (state.presetType) {
       loadWords().then(setAllWords).catch(console.error)
     }
   }, [state.presetType])
 
+  // フラグ状態をロード
   useEffect(() => {
     getFlaggedWords().then(ws => {
       const ids = ws.map(w => w.id)
@@ -56,18 +70,21 @@ export default function QuizPage() {
     }
   }
 
+  // ４択プール生成
   const choices = useMemo(() => {
     const pool = state.presetType && allWords.length > 0 ? allWords : state.qs
     const others = shuffle(pool.filter(w => w.id !== cur.id)).slice(0, 3)
     return shuffle([cur, ...others])
   }, [cur, state.qs, state.presetType, allWords])
 
+  // 復習モード時に正解ならリストから削除
   const maybeRemove = (isCorrect: boolean) => {
     if (state.presetType === 'review' && isCorrect) {
       removeReview(cur.id)
     }
   }
 
+  // 次の問題 or 結果へ
   const next = (isCorrect: boolean) => {
     maybeRemove(isCorrect)
     if (!isCorrect) setWrong(ws => [...ws, cur])
@@ -106,12 +123,10 @@ export default function QuizPage() {
   const isJE_MCQ = state.mode === 'JE_MCQ'
   const isJE_IN  = state.mode === 'JE_INPUT'
 
+  // ページ切り替え時に自動発音
   useEffect(() => {
     if (isEJ) {
-      const u = new SpeechSynthesisUtterance(cur.english)
-      u.lang = 'en-US'
-      speechSynthesis.cancel()
-      speechSynthesis.speak(u)
+      speak(cur.english)
     }
   }, [cur.id, isEJ])
 
@@ -138,22 +153,15 @@ export default function QuizPage() {
             }`}
           />
         </button>
-        {/* 発音ボタン */}
-        {isEJ && (
-          <button
-            type="button"
-            onClick={() => {
-              const u = new SpeechSynthesisUtterance(cur.english)
-              u.lang = 'en-US'
-              speechSynthesis.cancel()
-              speechSynthesis.speak(u)
-            }}
-            className="mr-2 p-1 rounded-full hover:bg-gray-100"
-            aria-label="発音を聞く"
-          >
-            <Volume2 className="w-6 h-6 text-gray-600" />
-          </button>
-        )}
+        {/* 発音ボタン：常に表示して speak() を使う */}
+        <button
+          type="button"
+          onClick={() => speak(cur.english)}
+          className="mr-2 p-1 rounded-full hover:bg-gray-100"
+          aria-label="発音を聞く"
+        >
+          <Volume2 className="w-6 h-6 text-gray-600" />
+        </button>
         {/* 問題文を絶対配置で中央 */}
         <h2 className="absolute left-1/2 transform -translate-x-1/2 text-3xl font-semibold">
           {isEJ ? cur.english : cur.japanese}
@@ -167,9 +175,9 @@ export default function QuizPage() {
             const label = isEJ ? c.japanese : c.english
             let cls = 'border rounded p-3'
             if (chosenId) {
-              if (c.id === cur.id) cls += ' bg-green-300'
+              if (c.id === cur.id)        cls += ' bg-green-300'
               else if (c.id === chosenId) cls += ' bg-red-300'
-              else cls += ' opacity-60'
+              else                        cls += ' opacity-60'
             } else {
               cls += ' hover:bg-gray-100'
             }
