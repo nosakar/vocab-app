@@ -1,11 +1,11 @@
-// src/pages/QuizPage.tsx ─＋アイコンをフラットデザインに変更＆フラッグをオレンジに
+// src/pages/QuizPage.tsx ─＋アイコンを左寄せに移動＆問題文をアイコン込みで中央
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useState, useMemo, useEffect } from 'react'
 import type { Word } from '../utils/csvLoader'
 import { loadWords } from '../utils/csvLoader'
 import { removeReview } from '../utils/db'
 import { addFlag, removeFlag, getFlaggedWords } from '../utils/db'
-import { Volume2, Star } from 'lucide-react'   // ← 追加：Flatデザインのアイコン
+import { Volume2, Star } from 'lucide-react'
 
 const DELAY_MS = 500
 
@@ -20,11 +20,11 @@ export default function QuizPage() {
   const { state } = useLocation() as { state: LocState }
   const navigate = useNavigate()
 
-  const [idx, setIdx]             = useState(0)
-  const [score, setScore]         = useState(0)
-  const [wrong, setWrong]         = useState<Word[]>([])
-  const [chosenId, setChosenId]   = useState<string|null>(null)
-  const [text, setText]           = useState('')
+  const [idx, setIdx]           = useState(0)
+  const [score, setScore]       = useState(0)
+  const [wrong, setWrong]       = useState<Word[]>([])
+  const [chosenId, setChosenId] = useState<string|null>(null)
+  const [text, setText]         = useState('')
   const [flaggedIds, setFlaggedIds] = useState<string[]>([])
   const [isFlagged, setIsFlagged]   = useState(false)
   const [allWords, setAllWords]     = useState<Word[]>([])
@@ -57,9 +57,7 @@ export default function QuizPage() {
   }
 
   const choices = useMemo(() => {
-    const pool = state.presetType && allWords.length > 0
-      ? allWords
-      : state.qs
+    const pool = state.presetType && allWords.length > 0 ? allWords : state.qs
     const others = shuffle(pool.filter(w => w.id !== cur.id)).slice(0, 3)
     return shuffle([cur, ...others])
   }, [cur, state.qs, state.presetType, allWords])
@@ -98,6 +96,7 @@ export default function QuizPage() {
       next(w.id === cur.id)
     }
   }
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     next(normalize(text) === normalize(cur.english))
@@ -127,17 +126,19 @@ export default function QuizPage() {
       </div>
 
       {/* 進捗テキスト */}
-      <p className="text-sm text-gray-500">
-        {idx + 1}/{state.qs.length}
-      </p>
+      <p className="text-sm text-gray-500">{idx + 1}/{state.qs.length}</p>
 
-      {/* 質問文＋発音＋気になるチェック */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold flex-1">
-          {isEJ ? cur.english : cur.japanese}
-        </h2>
-
-        {/* 発音ボタン：Flatデザインの Volume2 アイコン */}
+      {/* 質問文 + フラッグ＆発音(左端) */}
+      <div className="relative flex items-center justify-start">
+        {/* 気になるチェック */}
+        <button onClick={toggleFlag} aria-label="気になる切替" className="mr-2">
+          <Star
+            className={`w-6 h-6 ${
+              isFlagged ? 'text-orange-500 fill-current' : 'text-gray-400'
+            }`}
+          />
+        </button>
+        {/* 発音ボタン */}
         {isEJ && (
           <button
             type="button"
@@ -147,25 +148,16 @@ export default function QuizPage() {
               speechSynthesis.cancel()
               speechSynthesis.speak(u)
             }}
-            className="p-1 rounded-full hover:bg-gray-100"
+            className="mr-2 p-1 rounded-full hover:bg-gray-100"
             aria-label="発音を聞く"
           >
             <Volume2 className="w-6 h-6 text-gray-600" />
           </button>
         )}
-
-        {/* 気になるチェック：オレンジ色の Star アイコン */}
-        <button
-          onClick={toggleFlag}
-          aria-label="気になる切替"
-          className="ml-2"
-        >
-          <Star
-            className={`w-6 h-6 ${
-              isFlagged ? 'text-orange-500 fill-current' : 'text-gray-400'
-            }`}
-          />
-        </button>
+        {/* 問題文を絶対配置で中央 */}
+        <h2 className="absolute left-1/2 transform -translate-x-1/2 text-3xl font-semibold">
+          {isEJ ? cur.english : cur.japanese}
+        </h2>
       </div>
 
       {/* 4択 (EJ / JE_MCQ) */}
@@ -175,9 +167,9 @@ export default function QuizPage() {
             const label = isEJ ? c.japanese : c.english
             let cls = 'border rounded p-3'
             if (chosenId) {
-              if (c.id === cur.id)        cls += ' bg-green-300'
+              if (c.id === cur.id) cls += ' bg-green-300'
               else if (c.id === chosenId) cls += ' bg-red-300'
-              else                        cls += ' opacity-60'
+              else cls += ' opacity-60'
             } else {
               cls += ' hover:bg-gray-100'
             }
